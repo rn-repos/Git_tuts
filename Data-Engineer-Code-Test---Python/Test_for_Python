@@ -1,0 +1,179 @@
+import os
+import pandas as pd
+import re
+
+# Directories
+input_dir = 'data/input'
+processed_dir = 'data/processed'
+bad_dir = 'data/bad'
+output_dir = 'data/output'
+
+# Required fields for data quality check
+required_fields = ['name', 'phone', 'location']
+
+# File Check Module
+def file_check():
+    os.makedirs(processed_dir, exist_ok=True)
+    os.makedirs(bad_dir, exist_ok=True)
+    
+    for filename in os.listdir(input_dir):
+        file_path = os.path.join(input_dir, filename)
+        
+        # Check if file has already been processed
+        if filename in os.listdir(processed_dir):
+            print(f"{filename} has already been processed.")
+            continue
+        
+        # Check if the file is empty
+        if os.path.getsize(file_path) == 0:
+            print(f"{filename} is empty. Moving to bad files directory.")
+            os.rename(file_path, os.path.join(bad_dir, filename))
+            continue
+        
+        # Check if the file extension is .csv
+        if not filename.endswith('.csv'):
+            print(f"{filename} is not a CSV file. Moving to bad files directory.")
+            os.rename(file_path, os.path.join(bad_dir, filename))
+            continue
+        
+        # Move the file to the processed directory
+        os.rename(file_path, os.path.join(processed_dir, filename))
+        print(f"{filename} has been processed successfully.")
+
+# Validate phone number
+def validate_phone(phone):
+    phone = re.sub(r'\D', '', phone)  # Remove any non-numeric characters
+    if len(phone) == 10:  # Assuming valid phone numbers have 10 digits
+        return phone
+    else:
+        return None
+
+# Clean fields
+def clean_field(field):
+    return re.sub(r'[^\w\s]', '', str(field))
+
+# Data Quality Check Module
+def data_quality_check():
+    os.makedirs(output_dir, exist_ok=True)
+    
+    for filename in os.listdir(processed_dir):
+        file_path = os.path.join(processed_dir, filename)
+        df = pd.read_csv(file_path)
+        
+        clean_records = []
+        bad_records = []
+        
+        for index, row in df.iterrows():
+            row_is_bad = False
+            
+            # Validate phone number
+            phone = validate_phone(str(row['phone']))
+            if not phone:
+                row_is_bad = True
+            
+            # Check for null values in required fields
+            for field in required_fields:
+                if pd.isnull(row[field]):
+                    row_is_bad = True
+                    break
+            
+            # Clean descriptive fields
+            row['address'] = clean_field(row['address'])
+            row['reviews_list'] = clean_field(row['reviews_list'])
+            
+            if row_is_bad:
+                bad_records.append(row)
+            else:
+                clean_records.append(row)
+        
+        # Output clean and bad records
+        clean_df = pd.DataFrame(clean_records)
+        bad_df = pd.DataFrame(bad_records)
+        
+        clean_file = os.path.join(output_dir, f'clean_data_{filename}.out')
+        bad_file = os.path.join(output_dir, f'bad_data_{filename}.bad')
+        
+        clean_df.to_csv(clean_file, index=False)
+        bad_df.to_csv(bad_file, index=False)
+
+# Custom Data Quality Check Module
+def custom_data_quality_check():
+    for filename in os.listdir(processed_dir):
+        file_path = os.path.join(processed_dir, filename)
+        df = pd.read_csv(file_path)
+        
+        clean_records = []
+        bad_records = []
+        
+        for index, row in df.iterrows():
+            row_is_bad = False
+            
+            # Custom check: Duplicate data
+            if df.duplicated().iloc[index]:
+                row_is_bad = True
+            
+            # Custom check: Rate should be a numeric value
+            try:
+                float(row['rate'])
+            except ValueError:
+                row_is_bad = True
+            
+            if row_is_bad:
+                bad_records.append(row)
+            else:
+                clean_records.append(row)
+        
+        # Output clean and bad records
+        clean_df = pd.DataFrame(clean_records)
+        bad_df = pd.DataFrame(bad_records)
+        
+        custom_clean_file = os.path.join(output_dir, f'custom_clean_data_{filename}.out')
+        custom_bad_file = os.path.join(output_dir, f'custom_bad_data_{filename}.bad')
+        
+        clean_df.to_csv(custom_clean_file, index=False)
+        bad_df.to_csv(custom_bad_file, index=False)
+
+# Location Validation Module
+def location_validation():
+    areas_df = pd.read_csv(os.path.join(input_dir, 'Areas_in_blore.csv'))
+    valid_areas = areas_df['Area'].unique()
+    
+    for filename in os.listdir(processed_dir):
+        file_path = os.path.join(processed_dir, filename)
+        df = pd.read_csv(file_path)
+        
+        clean_records = []
+        bad_records = []
+        
+        for index, row in df.iterrows():
+            row_is_bad = False
+            
+            # Validate location
+            if row['location'] not in valid_areas:
+                row_is_bad = True
+            
+            if row_is_bad:
+                bad_records.append(row)
+            else:
+                clean_records.append(row)
+        
+        # Output clean and bad records
+        clean_df = pd.DataFrame(clean_records)
+        bad_df = pd.DataFrame(bad_records)
+        
+        location_clean_file = os.path.join(output_dir, f'location_clean_data_{filename}.out')
+        location_bad_file = os.path.join(output_dir, f'location_bad_data_{filename}.bad')
+        
+        clean_df.to_csv(location_clean_file, index=False)
+        bad_df.to_csv(location_bad_file, index=False)
+
+if __name__ == "__main__":
+    os.makedirs(processed_dir, exist_ok=True)
+    os.makedirs(bad_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Run modules in sequence
+    file_check()
+    data_quality_check()
+    custom_data_quality_check()
+    location_validation()
